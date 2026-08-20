@@ -12,8 +12,6 @@ This repository contains:
 | [`bas2prg.py`](bas2prg.py) | Compiles a `.bas` text file into a C64 `.prg` executable |
 | [`c64_syntax_checker.py`](c64_syntax_checker.py) | Syntax checker for BASIC V2 source code (English output) |
 | [`c64_syntax_checker_nl.py`](c64_syntax_checker_nl.py) | Syntax checker for BASIC V2 source code (Dutch output) |
-| [`spookkasteel.bas`](spookkasteel.bas) | Example project — a text adventure game ("Treasure of the Ghost Castle") |
-| [`spookkasteel.prg`](spookkasteel.prg) | The compiled game, ready to run in VICE or on a real C64 |
 
 ---
 
@@ -274,39 +272,6 @@ reference manual:
 
 ---
 
-## Example: the included text adventure
-
-[`spookkasteel.bas`](spookkasteel.bas) is a complete text adventure game
-("Schat van het Spookkasteel" / "Treasure of the Ghost Castle") that
-demonstrates the skill document in practice:
-
-- 7 rooms with a connected map
-- Items: lamp, key, sword, treasure
-- A locked-door puzzle (use the key)
-- Fixed screen layout using KERNAL PLOT (no scroll)
-  - Row 0: room name in cyan
-  - Row 10: command prompt
-  - Rows 12–19: response area (cleared per command)
-  - Row 20: inventory bar in green
-  - Row 21: "press a key" pause
-- SID victory melody (played at intro and win)
-- All code in lowercase, line numbers in steps of 10
-
-**To build and run it:**
-
-```bash
-# Check syntax
-python c64_syntax_checker.py spookkasteel.bas
-
-# Compile
-python bas2prg.py spookkasteel.bas -o spookkasteel.prg -i
-
-# Run in VICE
-x64sc spookkasteel.prg
-```
-
----
-
 ## Project structure
 
 ```text
@@ -316,8 +281,6 @@ x64sc spookkasteel.prg
 ├── bas2prg.py                  # .bas → .prg compiler
 ├── c64_syntax_checker.py       # Syntax checker (English output)
 ├── c64_syntax_checker_nl.py    # Syntax checker (Dutch output)
-├── spookkasteel.bas            # Example text adventure (source)
-├── spookkasteel.prg            # Example text adventure (compiled)
 ├── .gitignore                  # Excludes .bas/.prg from git
 └── README.md                   # This file
 ```
