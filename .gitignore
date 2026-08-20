@@ -1,0 +1,17 @@
+# Exclude BASIC source and compiled PRG files
+*.bas
+*.prg
+
+# Exclude temporary helper scripts
+_fix_game.py
+_shorten.py
+_insert_section.py
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+Thumbs.db
+.DS_Store
