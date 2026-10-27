@@ -10,12 +10,18 @@ Follows the checks from C64_BASIC_SKILL.md §2.2:
   - goto/gosub targets
   - on ... goto/gosub lists
   - keywords embedded in variable names (rem comments are skipped)
+  - forbidden keywords from other dialects (§3.2: else, while, mod, cls, ...)
+  - uppercase letters in code (§1 rule 1: bas2prg -i would break the keywords)
   - reachability (optional, disabled with C64_NO_REACH=1)
 
 Usage:
   python c64_syntax_checker_en.py program.bas
+  python c64_syntax_checker_en.py program.bas --json
   C64_NO_REACH=1 python c64_syntax_checker_en.py program.bas
+
+Exit codes: 0 = no errors, 1 = errors found, 2 = usage error / file unreadable.
 """
+import json
 import os
 import re
 import sys
@@ -44,6 +50,91 @@ FUNCS = {
 }
 SYMBOLS = {"+", "-", "*", "/", "^", ">", "=", "<"}
 SYS_VARS = {"st", "ti", "ti$"}
+# §3.2: keywords from BASIC 3.5/7.0, QuickBASIC etc. that do not exist in V2
+FORBIDDEN = {
+    "else", "elseif", "while", "wend", "do", "loop", "repeat", "until",
+    "select", "case", "sub", "function", "procedure", "local", "const",
+    "cls", "locate", "color", "sound", "play", "vol", "draw", "circle",
+    "box", "paint", "char", "graphic", "sprite", "movspr", "sshape",
+    "gshape", "scnclr", "window", "trap", "resume", "begin", "bend", "key",
+    "fast", "slow", "bank", "bload", "bsave", "dload", "dsave", "dopen",
+    "dclose", "directory", "header", "scratch", "rename", "collect", "copy",
+    "concat", "append", "record", "getkey", "instr", "string$", "mod",
+    "hex$", "dec", "bin$", "using", "pudef", "auto", "renumber", "delete",
+    "help", "tron", "troff", "rreg",
+}
+OPERAND_TYPES = {"num", "id", "str"}
+# Forbidden words that are functions elsewhere; others followed by "(" are arrays
+FORBIDDEN_FUNCS = {"instr", "dec", "hex$", "bin$", "string$"}
+
+
+def forbidden_keywords(st):
+    """Return the §3.2 keywords used as keywords in one statement.
+
+    Most of these words are legal V2 variable names (do=5, key(3)=1), so a
+    word only counts when it is used the way the other dialect uses it.
+    """
+    for k, t in enumerate(st):
+        if t == ("kw", "rem"):
+            st = st[:k]
+            break
+    found = []
+    for k, (ty, tx) in enumerate(st):
+        if ty != "id" or tx not in FORBIDDEN:
+            continue
+        prev = st[k - 1] if k > 0 else None
+        nxt = st[k + 1] if k + 1 < len(st) else None
+        if nxt == ("sym", "="):
+            continue  # assignment to (or comparison with) a variable of that name
+        at_head = prev is None or prev == ("kw", "then")
+        if tx == "else":
+            found.append(tx)
+        elif tx == "mod":
+            if prev and (prev[0] in OPERAND_TYPES or prev == ("punct", ")")) and \
+                    nxt and (nxt[0] in OPERAND_TYPES or nxt == ("punct", "(")):
+                found.append(tx)
+        elif tx in ("sub", "function") and prev == ("kw", "end"):
+            found.append("end " + tx)
+        elif tx == "using" and prev == ("kw", "print"):
+            found.append("print using")
+        elif nxt == ("punct", "("):
+            if tx in FORBIDDEN_FUNCS and not at_head:
+                found.append(tx)  # function call such as instr(...), hex$(...)
+        elif at_head and nxt != ("punct", "("):
+            found.append(tx)  # statement such as cls, color 0,2, do, loop
+    return found
+
+
+def if_jump_targets(st):
+    """Line numbers an if statement can jump to: 'then 100', 'then goto 100', 'goto 100'."""
+    targets = []
+    for k in range(len(st) - 1):
+        if st[k] in (("kw", "then"), ("kw", "goto")) and st[k + 1][0] == "num":
+            targets.append(int(st[k + 1][1]))
+    return targets
+
+
+def case_problems(body):
+    """Return (uppercase in code, uppercase inside a string) for one line body.
+
+    Text after rem is ignored: it is stored literally and never executed.
+    """
+    in_string = False
+    upper_code = upper_string = False
+    i = 0
+    while i < len(body):
+        ch = body[i]
+        if ch == '"':
+            in_string = not in_string
+        elif not in_string and body[i:i + 3].lower() == "rem":
+            break
+        elif "A" <= ch <= "Z":
+            if in_string:
+                upper_string = True
+            else:
+                upper_code = True
+        i += 1
+    return upper_code, upper_string
 
 
 def tokenize(line):
@@ -192,10 +283,19 @@ def check_file(path):
         if depth != 0:
             errors.append("line " + str(num) + ": unbalanced parentheses")
 
+        upper_code, upper_string = case_problems(body)
+        if upper_code:
+            errors.append("line " + str(num) + ": uppercase letters in code - write the source in lowercase "
+                          "(bas2prg -i flips the case, keywords would not be tokenized)")
+        if upper_string:
+            warnings.append("line " + str(num) + ": uppercase letters in a string appear as PETSCII graphics characters")
+
         stmts = split_statements(toks)
         for st in stmts:
             if not st:
                 continue
+            for word in forbidden_keywords(st):
+                errors.append("line " + str(num) + ": '" + word + "' does not exist in BASIC V2 (skill §3.2)")
             head = st[0]
             if head[0] != "kw":
                 continue
@@ -204,6 +304,8 @@ def check_file(path):
                 has_then = any(t[0] == "kw" and t[1] == "then" for t in st)
                 if not has_then:
                     errors.append("line " + str(num) + ": if without then")
+                for target in if_jump_targets(st):
+                    for_targets.add(target)
             if kw == "for":
                 if len(st) < 2 or st[1][0] != "id":
                     errors.append("line " + str(num) + ": for without variable")
@@ -286,7 +388,7 @@ def check_file(path):
         stack = [nums[0]]
         while stack:
             cur = stack.pop()
-            if cur in reachable:
+            if cur in reachable or cur not in num_to_idx:  # missing targets are reported above
                 continue
             reachable.add(cur)
             raw = lines[num_to_idx[cur]]
@@ -297,6 +399,7 @@ def check_file(path):
             toks = tokenize(body)
             stmts = split_statements(toks)
             jumped = False
+            conditional = False  # after an if, the rest of the line may be skipped
             for st in stmts:
                 if not st:
                     continue
@@ -304,14 +407,15 @@ def check_file(path):
                 if head[0] != "kw":
                     continue
                 kw = head[1]
+                if kw == "if":
+                    conditional = True
+                    stack.extend(if_jump_targets(st))
                 if kw == "goto" and len(st) >= 2 and st[1][0] == "num":
                     stack.append(int(st[1][1]))
-                    jumped = True
+                    if not conditional:
+                        jumped = True
                 if kw == "gosub" and len(st) >= 2 and st[1][0] == "num":
                     stack.append(int(st[1][1]))
-                if kw == "then" and len(st) >= 2 and st[1][0] == "num":
-                    stack.append(int(st[1][1]))
-                    jumped = True
                 if kw == "on":
                     for gi in range(1, len(st)):
                         if st[gi][0] == "kw" and st[gi][1] in ("goto", "gosub"):
@@ -327,6 +431,38 @@ def check_file(path):
             if num not in reachable:
                 warnings.append("line " + str(num) + ": unreachable line")
 
+    return errors, warnings
+
+
+def to_issue(severity, text):
+    m = re.match(r"line (\d+): (.*)", text)
+    if m:
+        return {"line": int(m.group(1)), "severity": severity, "message": m.group(2)}
+    return {"line": None, "severity": severity, "message": text}
+
+
+def main(argv):
+    args = [a for a in argv[1:] if a != "--json"]
+    want_json = "--json" in argv[1:]
+    if len(args) != 1:
+        print("usage: python c64_syntax_checker_en.py source.bas [--json]")
+        return 2
+    path = args[0]
+    try:
+        errors, warnings = check_file(path)
+    except (OSError, UnicodeDecodeError) as exc:
+        print("ERROR: cannot read " + path + ": " + str(exc), file=sys.stderr)
+        return 2
+
+    if want_json:
+        print(json.dumps({
+            "file": path,
+            "errors": len(errors),
+            "warnings": len(warnings),
+            "issues": [to_issue("ERROR", e) for e in errors] + [to_issue("WARN", w) for w in warnings],
+        }, indent=2))
+        return 1 if errors else 0
+
     print("=== c64 syntax checker ===")
     print("file: " + path)
     print("errors: " + str(len(errors)))
@@ -336,12 +472,10 @@ def check_file(path):
     for w in warnings:
         print("  WARN   " + w)
     if errors:
-        sys.exit(1)
+        return 1
     print("ok: 0 errors")
+    return 0
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("usage: python c64_syntax_checker_en.py source.bas")
-        sys.exit(2)
-    check_file(sys.argv[1])
+    sys.exit(main(sys.argv))

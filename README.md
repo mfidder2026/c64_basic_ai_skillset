@@ -199,6 +199,7 @@ error` messages on the C64.
 
 ```bash
 python c64_syntax_checker.py <source.bas>
+python c64_syntax_checker.py <source.bas> --json   # machine-readable, same schema as the C128 checker
 ```
 
 The checker validates:
@@ -211,6 +212,11 @@ The checker validates:
 - `goto` / `gosub` / `then <n>` targets exist
 - `on ... goto/gosub` target lists
 - Keywords embedded in variable names (e.g. `score` contains `or`)
+- Keywords from other dialects that do not exist in V2 (skill §3.2: `else`,
+  `while`, `mod`, `cls`, `color`, `instr(`, …). Plain variables with such a
+  name (`do=5`, `key(3)`) are still allowed
+- Uppercase letters in code (error: `bas2prg -i` would break the keywords)
+  and in strings (warning: they show up as PETSCII graphics characters)
 - Expression validity
 - Reachability (lines that can never be executed)
 
@@ -227,7 +233,7 @@ The checker validates:
 |---|---|
 | 0 | No errors |
 | 1 | One or more errors found |
-| 2 | Usage error (no file argument) |
+| 2 | Usage error (no file argument) or file unreadable |
 
 > **Note:** `c64_syntax_checker.py` has English output messages;
 > `c64_syntax_checker_nl.py` has Dutch output messages. Both produce
