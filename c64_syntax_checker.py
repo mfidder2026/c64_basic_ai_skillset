@@ -61,11 +61,11 @@ FORBIDDEN = {
     "dclose", "directory", "header", "scratch", "rename", "collect", "copy",
     "concat", "append", "record", "getkey", "instr", "string$", "mod",
     "hex$", "dec", "bin$", "using", "pudef", "auto", "renumber", "delete",
-    "help", "tron", "troff", "rreg",
+    "help", "tron", "troff", "rreg", "sqrt",
 }
 OPERAND_TYPES = {"num", "id", "str"}
 # Forbidden words that are functions elsewhere; others followed by "(" are arrays
-FORBIDDEN_FUNCS = {"instr", "dec", "hex$", "bin$", "string$"}
+FORBIDDEN_FUNCS = {"instr", "dec", "hex$", "bin$", "string$", "sqrt"}
 
 
 def forbidden_keywords(st):
